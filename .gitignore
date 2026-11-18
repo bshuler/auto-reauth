@@ -3,6 +3,8 @@ build
 bin
 .apt_generated
 run
+logs
+.DS_Store
 
 .vscode
 .idea

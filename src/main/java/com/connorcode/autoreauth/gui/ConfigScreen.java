@@ -64,7 +64,7 @@ public class ConfigScreen extends Screen {
             if (selected != null) config.defaultAccount = selected.account;
         }).width(74).build());
         footerTop.addChild(Button.builder(Component.nullToEmpty("Add Account"), (button) -> MicrosoftAuth.getCode(semaphore)
-                .thenCompose(MicrosoftAuth::getAccessToken).thenCompose(access -> MicrosoftAuth.authenticate(access)
+                .thenCompose(MicrosoftAuth::getAccessToken).thenCompose(access -> MicrosoftAuth.authenticateSession(access)
                         .thenApply(session -> new java.util.AbstractMap.SimpleEntry<>(access, session))).thenAccept(pair -> {
                     config.addAccount(new Config.Account(pair.getKey(), pair.getValue()));
                     config.save();
@@ -118,8 +118,9 @@ public class ConfigScreen extends Screen {
         var selected = this.accountList.getSelected();
         var uuid = Optional.ofNullable(selected).map(x -> x.account.uuid());
 
-        this.switchButton.active = (reauth == null || reauth.isDone()) && uuid.isPresent() && !Main.client.user.getProfileId()
-                .equals(uuid.get());
+        var status = Main.authStatus != null ? Main.authStatus.getNow(AuthUtils.AuthStatus.Unknown) : AuthUtils.AuthStatus.Unknown;
+        this.switchButton.active = (reauth == null || reauth.isDone()) && uuid.isPresent()
+                && (!Main.client.user.getProfileId().equals(uuid.get()) || !status.isOnline());
         this.makeDefaultButton.active = uuid.isPresent() && !config.isDefault(selected.account);
         this.deleteButton.active = uuid.isPresent();
 

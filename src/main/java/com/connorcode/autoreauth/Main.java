@@ -16,8 +16,8 @@ public class Main implements ClientModInitializer {
     public static Minecraft client = Minecraft.getInstance();
 
     public static Config config = new Config();
-    public static CompletableFuture<AuthUtils.AuthStatus> authStatus;
-    public static long lastUpdate = System.currentTimeMillis();
+    public static CompletableFuture<AuthUtils.AuthStatus> authStatus = CompletableFuture.completedFuture(AuthUtils.AuthStatus.Unknown);
+    public static long lastUpdate = 0L;
     public static boolean sentToast = false;
 
 

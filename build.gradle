@@ -11,6 +11,7 @@ base {
 }
 
 repositories {
+    mavenCentral()
     maven {
         name = "ModMenu"
         url = "https://maven.terraformersmc.com"
@@ -33,6 +34,13 @@ dependencies {
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
     implementation "com.terraformersmc:modmenu:${project.mod_menu_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
 }
 
 processResources {

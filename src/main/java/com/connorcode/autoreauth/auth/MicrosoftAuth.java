@@ -120,16 +120,27 @@ public class MicrosoftAuth {
     }
 
     public static CompletableFuture<User> authenticate(String code) {
-        return getAccessToken(code).thenCompose(MicrosoftAuth::authenticateXbox)
+        return getAccessToken(code).thenCompose(MicrosoftAuth::authenticateSession);
+    }
+
+    public static CompletableFuture<User> authenticateSession(AccessToken token) {
+        return authenticateXbox(token)
                 .thenCompose(MicrosoftAuth::obtainXstsToken).thenCompose(MicrosoftAuth::authenticateMinecraft)
                 .thenCompose(MicrosoftAuth::createSession);
     }
 
     public static CompletableFuture<User> authenticate(AccessToken token) {
+        return authenticate(token, CLIENT_ID);
+    }
+
+    public static CompletableFuture<User> authenticate(AccessToken token, String clientId) {
+        return authenticateWithTokens(token, clientId).thenApply(AuthSession::session);
+    }
+
+    public static CompletableFuture<AuthSession> authenticateWithTokens(AccessToken token, String clientId) {
         // TODO: Use access token if its still valid
-        return refreshAccessToken(token.refreshToken).thenCompose(MicrosoftAuth::authenticateXbox)
-                .thenCompose(MicrosoftAuth::obtainXstsToken).thenCompose(MicrosoftAuth::authenticateMinecraft)
-                .thenCompose(MicrosoftAuth::createSession);
+        return refreshAccessToken(token.refreshToken, clientId).thenCompose(refreshed ->
+                authenticateSession(refreshed).thenApply(session -> new AuthSession(refreshed, session)));
     }
 
     public static CompletableFuture<AccessToken> getAccessToken(String code) {
@@ -157,12 +168,17 @@ public class MicrosoftAuth {
     }
 
     static CompletableFuture<AccessToken> refreshAccessToken(String refreshToken) {
+        return refreshAccessToken(refreshToken, CLIENT_ID);
+    }
+
+    static CompletableFuture<AccessToken> refreshAccessToken(String refreshToken, String clientId) {
         log.info("Refreshing access token");
+        String effectiveClientId = (clientId == null || clientId.isBlank()) ? CLIENT_ID : clientId;
         return CompletableFuture.supplyAsync(() -> {
             try (var client = HttpClient.newHttpClient()) {
                 var req = HttpRequest.newBuilder(ACCESS_TOKEN_URI)
                         .header("Content-Type", "application/x-www-form-urlencoded")
-                        .POST(ofFormUrlEncodedData(Map.of("client_id", CLIENT_ID, "refresh_token", refreshToken, "grant_type", "refresh_token")))
+                        .POST(ofFormUrlEncodedData(Map.of("client_id", effectiveClientId, "refresh_token", refreshToken, "grant_type", "refresh_token")))
                         .build();
                 var str = client.send(req, HttpResponse.BodyHandlers.ofString()).body();
 
@@ -300,6 +316,9 @@ public class MicrosoftAuth {
     }
 
     public record AccessToken(String accessToken, String refreshToken) {
+    }
+
+    public record AuthSession(AccessToken token, User session) {
     }
 
     public record XboxAuth(String xblToken, String userHash) {

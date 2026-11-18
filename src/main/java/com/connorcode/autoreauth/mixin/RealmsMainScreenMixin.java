@@ -51,6 +51,7 @@ public class RealmsMainScreenMixin extends Screen {
     @Inject(at = @At("HEAD"), method = "Lcom/mojang/realmsclient/RealmsMainScreen;lambda$init$5(Lcom/mojang/realmsclient/RealmsAvailability$Result;)V", cancellable = true)
     void onRealmsAvailabilityInfo(RealmsAvailability.Result info, CallbackInfo ci) {
         if (!config.auto || info.type() != RealmsAvailability.Type.AUTHENTICATION_ERROR) return;
+        if (Main.client.user == null || config.getAccount(Main.client.user.getProfileId()).isEmpty()) return;
 
         log.info("Invalid Realms auth, re-authenticating...");
         authStatus = CompletableFuture.completedFuture(AuthUtils.AuthStatus.Invalid);

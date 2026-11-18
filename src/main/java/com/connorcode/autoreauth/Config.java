@@ -25,7 +25,7 @@ public class Config {
     public Config() {
     }
 
-    public void addAccount(Account account) {
+    public synchronized void addAccount(Account account) {
         for (int i = 0; i < accounts.size(); i++) {
             if (accounts.get(i).uuid.equals(account.uuid)) {
                 accounts.set(i, account);
@@ -36,12 +36,12 @@ public class Config {
         accounts.add(account);
     }
 
-    public void removeAccount(Account account) {
-        if (defaultAccount.equals(account)) defaultAccount = null;
+    public synchronized void removeAccount(Account account) {
+        if (account.equals(defaultAccount)) defaultAccount = null;
         accounts.removeIf(a -> a.equals(account));
     }
 
-    public Optional<Account> getAccount(UUID uuid) {
+    public synchronized Optional<Account> getAccount(UUID uuid) {
         for (var account : accounts)
             if (account.uuid.equals(uuid)) return Optional.of(account);
         if (defaultAccount != null) return Optional.of(defaultAccount);
@@ -49,16 +49,20 @@ public class Config {
         return Optional.empty();
     }
 
-    public boolean isDefault(Config.Account account) {
+    public synchronized boolean isDefault(Config.Account account) {
         return this.defaultAccount == null ? (!this.accounts.isEmpty() && this.accounts.getFirst()
                 .equals(account)) : this.defaultAccount.equals(account);
     }
 
-    public boolean load() {
-        if (Files.notExists(CONFIG_PATH)) return false;
+    public synchronized boolean load() {
+        return load(CONFIG_PATH);
+    }
+
+    public synchronized boolean load(Path path) {
+        if (Files.notExists(path)) return false;
 
         try {
-            var tag = NbtIo.read(CONFIG_PATH);
+            var tag = NbtIo.read(path);
             assert tag != null;
 
             this.debug = tag.getBoolean("debug").orElse(false);
@@ -68,7 +72,7 @@ public class Config {
                     .collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
 
             int defaultIdx = tag.getInt("default").orElse(-1);
-            this.defaultAccount = defaultIdx > 0 && defaultIdx < accounts.size() ? this.accounts.get(defaultIdx) : null;
+            this.defaultAccount = defaultIdx >= 0 && defaultIdx < accounts.size() ? this.accounts.get(defaultIdx) : null;
 
             return true;
         } catch (IOException e) {
@@ -76,7 +80,11 @@ public class Config {
         }
     }
 
-    public void save() {
+    public synchronized void save() {
+        save(CONFIG_PATH);
+    }
+
+    public synchronized void save(Path path) {
         var tag = new CompoundTag();
         tag.putBoolean("debug", debug);
         tag.putBoolean("auto", auto);
@@ -89,22 +97,42 @@ public class Config {
         tag.put("accounts", accounts);
 
         try {
-            Files.createDirectories(CONFIG_PATH.getParent());
-            NbtIo.write(tag, CONFIG_PATH);
+            if (path.getParent() != null) {
+                Files.createDirectories(path.getParent());
+            }
+            NbtIo.write(tag, path);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
-    public record Account(MicrosoftAuth.AccessToken accessToken, UUID uuid, String username) {
+    public record Account(MicrosoftAuth.AccessToken accessToken, UUID uuid, String username, String clientId) {
+        public Account(MicrosoftAuth.AccessToken accessToken, UUID uuid, String username) {
+            this(accessToken, uuid, username, MicrosoftAuth.CLIENT_ID);
+        }
+
         public Account(MicrosoftAuth.AccessToken access, User session) {
-            this(access, session.getProfileId(), session.getName());
+            this(access, session, MicrosoftAuth.CLIENT_ID);
+        }
+
+        public Account(MicrosoftAuth.AccessToken access, User session, String clientId) {
+            this(access, session.getProfileId(), session.getName(), normalizeClientId(clientId));
         }
 
         public Account(CompoundTag nbt) {
-            this(new MicrosoftAuth.AccessToken(nbt.getString("accessToken").orElseThrow(), nbt.getString("refreshToken")
-                    .orElseThrow()), Misc.parseUUID(nbt.getString("uuid").orElseThrow()), nbt.getString("username")
-                    .orElseThrow());
+            this(
+                new MicrosoftAuth.AccessToken(
+                    nbt.getString("accessToken").orElseThrow(),
+                    nbt.getString("refreshToken").orElseThrow()
+                ),
+                Misc.parseUUID(nbt.getString("uuid").orElseThrow()),
+                nbt.getString("username").orElseThrow(),
+                normalizeClientId(nbt.getString("client_id").orElse(null))
+            );
+        }
+
+        private static String normalizeClientId(String clientId) {
+            return (clientId == null || clientId.isBlank()) ? MicrosoftAuth.CLIENT_ID : clientId;
         }
 
         public CompoundTag serialize() {
@@ -113,6 +141,10 @@ public class Config {
             tag.putString("refreshToken", accessToken.refreshToken());
             tag.putString("uuid", uuid.toString());
             tag.putString("username", username);
+            var effectiveClientId = normalizeClientId(clientId);
+            if (!effectiveClientId.equals(MicrosoftAuth.CLIENT_ID)) {
+                tag.putString("client_id", effectiveClientId);
+            }
             return tag;
         }
 

@@ -17,7 +17,7 @@ public class RealmsWaitingScreen extends WaitingScreen {
 
     @Override
     public void tick() {
-        if (authStatus.getNow(AuthUtils.AuthStatus.Invalid).isOnline())
+        if (authStatus != null && authStatus.getNow(AuthUtils.AuthStatus.Unknown).isOnline())
             Main.client.gui.setScreen(new RealmsMainScreen(parent));
         else tickAuthStatus(parent);
     }

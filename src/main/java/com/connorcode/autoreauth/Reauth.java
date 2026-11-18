@@ -20,7 +20,7 @@ public class Reauth {
     static final boolean METEOR_LOADED = FabricLoader.getInstance().isModLoaded("meteor-client");
 
     public static boolean renderAuthStatus(GuiGraphicsExtractor context, int mouseX, int mouseY) {
-        var status = authStatus.getNow(AuthUtils.AuthStatus.Unknown);
+        var status = authStatus != null ? authStatus.getNow(AuthUtils.AuthStatus.Unknown) : AuthUtils.AuthStatus.Unknown;
         var color = switch (status) {
             case Unknown -> ChatFormatting.GRAY;
             case Invalid, Offline -> ChatFormatting.RED;
@@ -49,12 +49,12 @@ public class Reauth {
 
     public static void tickAuthStatus(Screen parent) {
         var now = System.currentTimeMillis();
-        if (authStatus.isDone() && lastUpdate + 1000 * 60 * 5 < now) {
+        if ((authStatus == null || authStatus.isDone()) && lastUpdate + 1000 * 60 * 5 < now) {
             lastUpdate = now;
             authStatus = AuthUtils.getAuthStatus();
         }
 
-        var status = authStatus.getNow(AuthUtils.AuthStatus.Unknown);
+        var status = authStatus != null ? authStatus.getNow(AuthUtils.AuthStatus.Unknown) : AuthUtils.AuthStatus.Unknown;
         if (config.auto && status.isInvalid() && !sentToast) {
             sentToast = true;
             var account = config.getAccount(client.user.getProfileId());
@@ -81,15 +81,19 @@ public class Reauth {
     }
 
     public static CompletableFuture<Void> attemptReauth(Screen parent, Config.Account account) {
-        return MicrosoftAuth.authenticate(account.accessToken()).thenAccept(session -> {
-            try {
-                AuthUtils.setSession(session);
-            } catch (AuthenticationException e) {
-                log.error("Error re-authenticating", e);
-            }
-            authStatus = AuthUtils.getAuthStatus();
-            Misc.sendToast("AutoReauth", String.format("Authenticated as %s!", session.getName()));
-        }).exceptionally(e -> {
+        return MicrosoftAuth.authenticateWithTokens(account.accessToken(), account.clientId()).thenCompose(auth ->
+                CompletableFuture.runAsync(() -> {
+                    var session = auth.session();
+                    config.addAccount(new Config.Account(auth.token(), session, account.clientId()));
+                    config.save();
+                    try {
+                        AuthUtils.setSession(session);
+                    } catch (AuthenticationException e) {
+                        log.error("Error re-authenticating", e);
+                    }
+                    authStatus = AuthUtils.getAuthStatus();
+                    Misc.sendToast("AutoReauth", String.format("Authenticated as %s!", session.getName()));
+                }, client)).exceptionally(e -> {
             log.error("Error re-authenticating", e);
             client.execute(() -> client.gui.setScreen(new ErrorScreen(parent, "Error re-authenticating", e.toString())));
             return null;

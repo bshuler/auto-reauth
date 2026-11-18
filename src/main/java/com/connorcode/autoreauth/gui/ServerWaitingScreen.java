@@ -24,7 +24,7 @@ public class ServerWaitingScreen extends WaitingScreen {
 
     @Override
     public void tick() {
-        if (authStatus.getNow(AuthUtils.AuthStatus.Invalid).isOnline())
+        if (authStatus != null && authStatus.getNow(AuthUtils.AuthStatus.Unknown).isOnline())
             AuthUtils.connectToServer(address, info, quickPlay);
         else tickAuthStatus(parent);
     }
